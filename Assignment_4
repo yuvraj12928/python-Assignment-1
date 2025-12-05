@@ -1,0 +1,215 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+
+# --- Configuration: CHANGE THESE VALUES BASED ON YOUR DATASET ---
+FILE_PATH = 'weather_data.csv'
+DATE_COLUMN = 'Date'
+TEMP_COLUMN = 'Temperature_C'
+RAIN_COLUMN = 'Rainfall_mm'
+HUMID_COLUMN = 'Humidity_%'
+RELEVANT_COLS = [DATE_COLUMN, TEMP_COLUMN, RAIN_COLUMN, HUMID_COLUMN]
+PLOTS_DIR = 'plots'
+CLEANED_FILE_PATH = 'weather_data_cleaned.csv'
+REPORT_FILE_PATH = 'summary_report.md'
+
+# Create plots directory if it doesn't exist
+os.makedirs(PLOTS_DIR, exist_ok=True)
+
+
+# --- Task 1: Data Acquisition and Loading ---
+print("--- Task 1: Data Acquisition and Loading ---")
+try:
+    df = pd.read_csv(FILE_PATH)
+    print("DataFrame Head:")
+    print(df.head())
+    print("\nDataFrame Info:")
+    df.info()
+    print("\nDataFrame Describe:")
+    print(df.describe())
+
+except FileNotFoundError:
+    print(f"Error: The file '{FILE_PATH}' was not found. Please check the file path.")
+    exit()
+
+# Filter initial DataFrame for only the columns we need to prevent errors
+df = df[RELEVANT_COLS].copy()
+
+
+# --- Task 2: Data Cleaning and Processing ---
+print("\n--- Task 2: Data Cleaning and Processing ---")
+
+# 1. Convert date column to datetime and set as index
+df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN])
+df.set_index(DATE_COLUMN, inplace=True)
+
+# 2. Handle missing values: Drop rows with any NaNs (a common approach for weather time-series)
+# If dropping too many rows, consider filling with mean/median for numerical columns
+df_cleaned = df.dropna()
+
+# 3. Final check of cleaned data structure
+print(f"Cleaned Data Rows Dropped: {len(df) - len(df_cleaned)}")
+print("Cleaned DataFrame Info:")
+df_cleaned.info()
+
+
+# --- Task 3: Statistical Analysis with NumPy ---
+print("\n--- Task 3: Statistical Analysis with NumPy ---")
+
+# Compute daily/overall statistics using NumPy methods
+temp_data = df_cleaned[TEMP_COLUMN].values
+rain_data = df_cleaned[RAIN_COLUMN].values
+humid_data = df_cleaned[HUMID_COLUMN].values
+
+daily_stats = {
+    'Mean Temp': np.mean(temp_data),
+    'Max Temp': np.max(temp_data),
+    'Min Temp': np.min(temp_data),
+    'Std Dev Temp': np.std(temp_data),
+    'Total Rainfall': np.sum(rain_data)
+}
+print("Overall Statistics:")
+for k, v in daily_stats.items():
+    print(f"- {k}: {v:.2f}")
+
+# Compute monthly and yearly statistics using Pandas Resample (built on NumPy)
+monthly_stats = df_cleaned.resample('M').agg({
+    TEMP_COLUMN: ['mean', 'min', 'max', 'std'],
+    RAIN_COLUMN: 'sum'
+})
+
+yearly_stats = df_cleaned.resample('Y').agg({
+    TEMP_COLUMN: ['mean', 'min', 'max'],
+    RAIN_COLUMN: 'sum'
+})
+print("\nMonthly Statistics Head:")
+print(monthly_stats.head())
+print("\nYearly Statistics:")
+print(yearly_stats)
+
+
+# --- Task 5: Grouping and Aggregation (Executed before Visualization for aggregated data) ---
+print("\n--- Task 5: Grouping and Aggregation ---")
+# Group data by month number (across all years) for long-term averages
+df_cleaned['Month'] = df_cleaned.index.month
+
+monthly_averages_all_years = df_cleaned.groupby('Month').agg({
+    TEMP_COLUMN: 'mean',
+    RAIN_COLUMN: 'sum',
+    HUMID_COLUMN: 'mean'
+}).rename(columns={'mean': 'Average_Temp', 'sum': 'Total_Rainfall'})
+
+print("Monthly Averages (Across All Years):")
+print(monthly_averages_all_years)
+
+
+# --- Task 4: Visualization with Matplotlib ---
+print("\n--- Task 4: Visualization with Matplotlib ---")
+plt.style.use('ggplot')
+
+# 1. Line chart for daily temperature trends
+plt.figure(figsize=(14, 6))
+plt.plot(df_cleaned.index, df_cleaned[TEMP_COLUMN], label=TEMP_COLUMN, color='#e67e22', linewidth=1)
+plt.title(f'Daily Temperature Trend: {TEMP_COLUMN}')
+plt.xlabel('Date')
+plt.ylabel('Temperature (°C)')
+plt.legend()
+plt.tight_layout()
+plt.savefig(os.path.join(PLOTS_DIR, '01_daily_temperature_line_chart.png'))
+plt.close()
+
+# 2. Bar chart for monthly rainfall totals (from Task 3 aggregation)
+monthly_rainfall_total = monthly_stats[RAIN_COLUMN]['sum']
+plt.figure(figsize=(10, 5))
+monthly_rainfall_total.plot(kind='bar', color='#3498db')
+plt.title('Monthly Rainfall Totals Over Time')
+plt.xlabel('Month')
+plt.ylabel('Total Rainfall (mm)')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.savefig(os.path.join(PLOTS_DIR, '02_monthly_rainfall_bar_chart.png'))
+plt.close()
+
+# 3. Scatter plot for humidity vs. temperature
+plt.figure(figsize=(8, 6))
+plt.scatter(df_cleaned[HUMID_COLUMN], df_cleaned[TEMP_COLUMN], alpha=0.5, color='#27ae60')
+plt.title('Relationship Between Humidity and Temperature')
+plt.xlabel(HUMID_COLUMN)
+plt.ylabel(TEMP_COLUMN)
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.tight_layout()
+plt.savefig(os.path.join(PLOTS_DIR, '03_humidity_vs_temperature_scatter_plot.png'))
+plt.close()
+
+# 4. Combined Plot (Subplots) - Daily Temperature and Cumulative Rainfall
+fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(14, 10), sharex=True)
+
+# Top Plot: Daily Temperature
+axes[0].plot(df_cleaned.index, df_cleaned[TEMP_COLUMN], color='#c0392b', label='Temperature')
+axes[0].set_title('Daily Temperature and Rolling Cumulative Rainfall')
+axes[0].set_ylabel('Temperature (°C)')
+axes[0].legend(loc='upper left')
+axes[0].grid(True, alpha=0.4)
+
+# Bottom Plot: Cumulative Rainfall (Example of advanced plotting)
+axes[1].plot(df_cleaned.index, df_cleaned[RAIN_COLUMN].cumsum(), color='#16a085', label='Cumulative Rainfall')
+axes[1].set_ylabel('Cumulative Rainfall (mm)')
+axes[1].set_xlabel('Date')
+axes[1].legend(loc='upper left')
+axes[1].grid(True, alpha=0.4)
+
+plt.tight_layout()
+plt.savefig(os.path.join(PLOTS_DIR, '04_combined_temp_cumulative_rainfall.png'))
+plt.close()
+
+
+# --- Task 6: Export and Storytelling ---
+print("\n--- Task 6: Export and Storytelling ---")
+
+# 1. Export cleaned data
+df_cleaned.to_csv(CLEANED_FILE_PATH)
+print(f"Cleaned data exported to {CLEANED_FILE_PATH}")
+
+# 2. Plots saved in PLOTS_DIR (already done in Task 4)
+print(f"All plots saved as PNGs in the '{PLOTS_DIR}' directory.")
+
+# 3. Write Markdown Report
+report_content = f"""# 📝 Weather Data Analysis Summary Report
+
+## 1. Dataset and Tools
+* **Dataset Source:** [**INSERT DATASET SOURCE/LINK HERE**]
+* **Time Period Analyzed:** {df_cleaned.index.min().strftime('%Y-%m-%d')} to {df_cleaned.index.max().strftime('%Y-%m-%d')}
+* **Tools Used:** Pandas, NumPy, Matplotlib.
+* **Cleaning:** Missing values were handled by dropping rows (**{len(df) - len(df_cleaned)}** rows dropped).
+
+---
+## 2. Key Statistical Metrics (NumPy Summary)
+
+| Metric | Temperature (°C) | Rainfall (mm) | Humidity (%) |
+| :--- | :---: | :---: | :---: |
+| **Mean** | {daily_stats['Mean Temp']:.2f} | {np.mean(rain_data):.2f} | {np.mean(humid_data):.2f} |
+| **Max** | {daily_stats['Max Temp']:.2f} | {np.max(rain_data):.2f} | {np.max(humid_data):.2f} |
+| **Min** | {daily_stats['Min Temp']:.2f} | {np.min(rain_data):.2f} | {np.min(humid_data):.2f} |
+| **Std Dev** | {daily_stats['Std Dev Temp']:.2f} | {np.std(rain_data):.2f} | {np.std(humid_data):.2f} |
+
+---
+## 3. Analysis of Trends and Anomalies
+
+### Daily Temperature Trend
+The line chart (*01\_daily\_temperature\_line\_chart.png*) clearly illustrates **seasonal variation**. We observe a cyclical pattern where temperatures peak around **[Month/Season]** and reach their lowest point around **[Month/Season]**. The high **standard deviation** (Std Dev: {daily_stats['Std Dev Temp']:.2f}) indicates significant temperature variability across the period.
+
+### Monthly Rainfall Totals
+The monthly bar chart (*02\_monthly\_rainfall\_bar\_chart.png*) highlights that the majority of precipitation falls during **[Identify the wettest month/period from the chart]**. This seasonal concentration of rainfall is a key feature of the local climate.
+
+### Humidity vs. Temperature Relationship
+The scatter plot (*03\_humidity\_vs\_temperature\_scatter\_plot.png*) shows **[positive/negative/no]** correlation. Specifically, **[Interpret the scatter pattern, e.g., low humidity values are primarily associated with the highest and lowest temperatures, while moderate temperatures correspond to a wide range of humidity]**.
+
+### Long-Term Grouped Averages
+The monthly aggregation across all years (Task 5) shows that **Month {monthly_averages_all_years[TEMP_COLUMN].idxmax()}** has the highest long-term average temperature of **{monthly_averages_all_years[TEMP_COLUMN].max():.2f}°C**. This confirms the peak hot period, providing a stable baseline for comparison.
+"""
+
+with open(REPORT_FILE_PATH, 'w') as f:
+    f.write(report_content)
+
+print(f"Summary report exported to {REPORT_FILE_PATH}")
